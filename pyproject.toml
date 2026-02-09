@@ -1,0 +1,38 @@
+[project]
+name = "zugzwang"
+readme = "README.md"
+dynamic = ["version"]
+authors = [
+    { name = "Kilian Calefice" },
+]
+requires-python = ">=3.14"
+dependencies = [
+    "torch==2.10.0",
+    "torchvision==0.25.0",
+    "torchaudio==2.10.0",
+    "python-chess==1.999",
+]
+
+[project.optional-dependencies]
+# install with `pip install ".[dev]"`
+dev = [
+  "black==25.9.0",
+  "isort==7.0.0",
+  "pylint==4.0.1",
+]
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch-cu130"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+
+[project.urls]
+"Repository" = "https://github.com/creed-braton/zugzwang"
+"Issues" = "https://github.com/creed-braton/zugzwang/issues"

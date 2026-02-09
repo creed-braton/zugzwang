@@ -1,0 +1,36 @@
+# Secret files
+**/.env
+**/.env.*
+**/*.env
+**/*.pem
+**/*.key
+**/*.crt
+**/*.cert
+**/*.secret
+**/*.credentials
+**/credentials.*
+**/*.token
+**/secrets.*
+
+# Log files and directorires
+**/logs
+**/*.log
+**/*.log*
+
+# Python directories and files
+**/.venv
+**/venv
+**/uv.lock
+**/*.egg-info
+**/__pycache__
+
+# Editor directories and files
+**/.vscode/*
+**/!.vscode/extensions.json
+**/.idea
+**/.DS_Store
+**/*.suo
+**/*.ntvs*
+**/*.njsproj
+**/*.sln
+**/*.sw?
