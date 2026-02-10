@@ -1,5 +1,25 @@
-import chess
-from encode import board_to_tensor
+from argparse import Namespace
 
-board = chess.Board()
-print(board_to_tensor(board))
+import torch
+
+from model import ZugzwangNet, train
+
+
+def main():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = ZugzwangNet().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    args = Namespace(
+        batch_size=64,
+        log_interval=10,
+        iterations=10,
+        num_games=100,
+        epochs=5,
+    )
+
+    train(args, model, device, optimizer)
+
+
+if __name__ == "__main__":
+    main()

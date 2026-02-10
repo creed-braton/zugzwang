@@ -41,7 +41,7 @@ _FILE_DIM = 8
 _PAWN_DIR_DIM = 3
 _SQUARE_DIM = 64 * 64
 _UNDERPROM_DIM = _UNDERPROM_PCS_DIM * _FILE_DIM * _PAWN_DIR_DIM
-_POLICY_DIM = _SQUARE_DIM + _UNDERPROM_DIM
+POLICY_DIM = _SQUARE_DIM + _UNDERPROM_DIM
 
 
 def _get_move_index(move: chess.Move, flip: bool) -> int:
@@ -84,9 +84,17 @@ def sample_move(
     board: chess.Board,
     logits: torch.Tensor,
     temperature: float = 1.0,
-):
-    moves, indices = _get_move_index(board)
+) -> tuple[chess.Move, float, torch.Tensor]:
+    moves, indices = _get_legal_moves(board)
     legal_logits = logits[indices] / temperature
     log_probs = legal_logits - legal_logits.logsumexp(dim=0)
-    chosen = torch.multinomial(log_probs.exp(), 1).item()
-    return moves[chosen], log_probs[chosen]
+    probs = log_probs.exp()
+
+    chosen = torch.multinomial(probs, 1).item()
+    move = moves[chosen]
+
+    # One-hot tensor
+    tensor = torch.zeros(POLICY_DIM, dtype=torch.float32)
+    tensor[indices[chosen]] = 1.0
+
+    return move, log_probs[chosen].item(), tensor

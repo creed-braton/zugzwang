@@ -5,7 +5,7 @@ dynamic = ["version"]
 authors = [
     { name = "Kilian Calefice" },
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "torch==2.10.0",
     "torchvision==0.25.0",
