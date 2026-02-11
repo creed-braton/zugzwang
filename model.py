@@ -1,3 +1,6 @@
+import os
+from datetime import datetime
+
 import chess
 import torch
 import torch.nn as nn
@@ -101,6 +104,12 @@ def train(args, model, device, optimizer):
                 args.log_interval,
             )
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs("models", exist_ok=True)
+    save_path = os.path.join("models", f"zugzwang_{timestamp}.pth")
+    torch.save(model.state_dict(), save_path)
+    print(f"\nModel saved to {save_path}")
+
 
 def test(model, device, test_loader):
     model.eval()
@@ -155,12 +164,13 @@ def _generate_games(
 
         while not board.is_game_over():
             state = board_to_tensor(board)
-            _, policy_logits, _ = model(state.unsqueeze(0))
-            move, _, policy_one_hot = sample_move(
+            device = next(model.parameters()).device
+            _, policy_logits, _ = model(state.unsqueeze(0).to(device))
+            move, _, policy_index = sample_move(
                 board, policy_logits.squeeze(0), temperature
             )
             game_states.append(state)
-            game_policies.append(policy_one_hot)
+            game_policies.append(policy_index)
             board.push(move)
 
         result = board.result()
@@ -181,6 +191,6 @@ def _generate_games(
 
     return ChessDataset(
         torch.stack(all_states),
-        torch.stack(all_policies),
+        torch.tensor(all_policies, dtype=torch.long),
         torch.tensor(all_values, dtype=torch.float32),
     )

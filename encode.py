@@ -93,8 +93,4 @@ def sample_move(
     chosen = torch.multinomial(probs, 1).item()
     move = moves[chosen]
 
-    # One-hot tensor
-    tensor = torch.zeros(POLICY_DIM, dtype=torch.float32)
-    tensor[indices[chosen]] = 1.0
-
-    return move, log_probs[chosen].item(), tensor
+    return move, log_probs[chosen].item(), indices[chosen].item()
