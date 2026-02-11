@@ -90,7 +90,9 @@ def train(args, model, device, optimizer):
         print(
             f"\n--- Iteration {iteration}/{args.iterations}: generating {args.num_games} games ---"
         )
-        dataset = _generate_games(model, num_games=args.num_games)
+        dataset = _generate_games(
+            model, num_games=args.num_games, alpha=args.alpha
+        )
         train_loader = torch.utils.data.DataLoader(
             dataset, batch_size=args.batch_size, shuffle=True
         )
@@ -149,8 +151,9 @@ def test(model, device, test_loader):
 @torch.no_grad()
 def _generate_games(
     model: ZugzwangNet,
-    num_games: int = 100,
+    num_games: int = 1000,
     temperature: float = 1.0,
+    alpha: float = 3.0,
 ) -> ChessDataset:
     model.eval()
     all_states = []
@@ -167,7 +170,11 @@ def _generate_games(
             device = next(model.parameters()).device
             _, policy_logits, _ = model(state.unsqueeze(0).to(device))
             move, _, policy_index = sample_move(
-                board, policy_logits.squeeze(0), temperature
+                board,
+                policy_logits.squeeze(0),
+                temperature,
+                model=model,
+                alpha=alpha,
             )
             game_states.append(state)
             game_policies.append(policy_index)

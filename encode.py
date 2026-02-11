@@ -84,9 +84,27 @@ def sample_move(
     board: chess.Board,
     logits: torch.Tensor,
     temperature: float = 1.0,
+    model: torch.nn.Module | None = None,
+    alpha: float = 3.0,
 ) -> tuple[chess.Move, float, torch.Tensor]:
     moves, indices = _get_legal_moves(board)
-    legal_logits = logits[indices] / temperature
+    legal_logits = logits[indices]
+
+    if model is not None and len(moves) > 1:
+        device = logits.device
+        # For each legal move, play it and evaluate the resulting position
+        states = []
+        for move in moves:
+            board.push(move)
+            states.append(board_to_tensor(board))
+            board.pop()
+        batch = torch.stack(states).to(device)
+        _, _, values = model(batch)
+        # values are from the opponent's perspective; negate so that
+        # moves leading to bad positions for the opponent score high
+        legal_logits = legal_logits + alpha * (-values.squeeze())
+
+    legal_logits = legal_logits / temperature
     log_probs = legal_logits - legal_logits.logsumexp(dim=0)
     probs = log_probs.exp()
 

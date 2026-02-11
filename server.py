@@ -40,7 +40,9 @@ def get_move(req: MoveRequest):
     state = board_to_tensor(board)
     with torch.no_grad():
         _, policy_logits, _ = model(state.unsqueeze(0).to(device))
-    move, _, _ = sample_move(board, policy_logits.squeeze(0), temperature=0.1)
+    move, _, _ = sample_move(
+        board, policy_logits.squeeze(0), temperature=0.1, model=model
+    )
     board.push(move)
     return MoveResponse(move=move.uci(), fen=board.fen())
 
@@ -172,4 +174,5 @@ const board = Chessboard('board', {
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

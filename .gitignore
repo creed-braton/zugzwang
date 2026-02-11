@@ -23,6 +23,7 @@
 **/uv.lock
 **/*.egg-info
 **/__pycache__
+**/*.pth
 
 # Editor directories and files
 **/.vscode/*

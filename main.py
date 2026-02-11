@@ -18,6 +18,7 @@ def main():
         iterations=50,
         num_games=1000,
         epochs=5,
+        alpha=3.0,
     )
 
     train(args, model, device, optimizer)
