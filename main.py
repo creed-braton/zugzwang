@@ -16,9 +16,12 @@ def main():
         batch_size=64,
         log_interval=10,
         iterations=50,
-        num_games=1000,
+        num_games=100,
         epochs=5,
-        alpha=3.0,
+        num_simulations=100,
+        c_puct=1.5,
+        temperature=1.0,
+        temp_threshold=30,
     )
 
     train(args, model, device, optimizer)

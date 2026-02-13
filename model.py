@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from encode import POLICY_DIM, board_to_tensor, sample_move
+from encode import POLICY_DIM, board_to_tensor
+from mcts import mcts_search
 
 
 class ZugzwangNet(nn.Module):
@@ -71,7 +72,8 @@ def _train_epoch(model, device, train_loader, optimizer, epoch, log_interval):
         optimizer.zero_grad()
         _, policy_pred, value_pred = model(data)
 
-        policy_loss = F.cross_entropy(policy_pred, policy_target)
+        log_probs = F.log_softmax(policy_pred, dim=1)
+        policy_loss = -(policy_target * log_probs).sum(dim=1).mean()
         value_loss = F.mse_loss(value_pred.squeeze(), value_target)
         loss = policy_loss + value_loss
 
@@ -86,12 +88,22 @@ def _train_epoch(model, device, train_loader, optimizer, epoch, log_interval):
 
 
 def train(args, model, device, optimizer):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs("models", exist_ok=True)
+    save_path = os.path.join("models", f"zugzwang_{timestamp}.pth")
+
     for iteration in range(1, args.iterations + 1):
         print(
             f"\n--- Iteration {iteration}/{args.iterations}: generating {args.num_games} games ---"
         )
         dataset = _generate_games(
-            model, num_games=args.num_games, alpha=args.alpha
+            model,
+            device,
+            num_games=args.num_games,
+            num_simulations=args.num_simulations,
+            c_puct=args.c_puct,
+            temperature=args.temperature,
+            temp_threshold=args.temp_threshold,
         )
         train_loader = torch.utils.data.DataLoader(
             dataset, batch_size=args.batch_size, shuffle=True
@@ -106,11 +118,8 @@ def train(args, model, device, optimizer):
                 args.log_interval,
             )
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    os.makedirs("models", exist_ok=True)
-    save_path = os.path.join("models", f"zugzwang_{timestamp}.pth")
-    torch.save(model.state_dict(), save_path)
-    print(f"\nModel saved to {save_path}")
+        torch.save(model.state_dict(), save_path)
+        print(f"Model saved to {save_path} (iteration {iteration})")
 
 
 def test(model, device, test_loader):
@@ -128,15 +137,17 @@ def test(model, device, test_loader):
             )
             _, policy_pred, value_pred = model(data)
 
-            test_policy_loss += F.cross_entropy(
-                policy_pred, policy_target, reduction="sum"
-            ).item()
+            log_probs = F.log_softmax(policy_pred, dim=1)
+            test_policy_loss += (
+                -(policy_target * log_probs).sum(dim=1).sum().item()
+            )
             test_value_loss += F.mse_loss(
                 value_pred.squeeze(), value_target, reduction="sum"
             ).item()
 
             pred_policy = policy_pred.argmax(dim=1)
-            correct_policy += pred_policy.eq(policy_target).sum().item()
+            target_policy = policy_target.argmax(dim=1)
+            correct_policy += pred_policy.eq(target_policy).sum().item()
 
     test_policy_loss /= len(test_loader.dataset)
     test_value_loss /= len(test_loader.dataset)
@@ -148,37 +159,47 @@ def test(model, device, test_loader):
     )
 
 
-@torch.no_grad()
 def _generate_games(
     model: ZugzwangNet,
-    num_games: int = 1000,
+    device,
+    num_games: int = 100,
+    num_simulations: int = 100,
+    c_puct: float = 1.5,
     temperature: float = 1.0,
-    alpha: float = 3.0,
+    temp_threshold: int = 30,
 ) -> ChessDataset:
     model.eval()
     all_states = []
     all_policies = []
     all_values = []
 
-    for _ in range(num_games):
+    for game_idx in range(num_games):
         board = chess.Board()
         game_states = []
         game_policies = []
+        move_count = 0
 
         while not board.is_game_over():
             state = board_to_tensor(board)
-            device = next(model.parameters()).device
-            _, policy_logits, _ = model(state.unsqueeze(0).to(device))
-            move, _, policy_index = sample_move(
+
+            # Temperature annealing: explore early, go greedy later
+            use_exploration = move_count < temp_threshold
+            temp = temperature if use_exploration else 0.0
+
+            move, policy_target = mcts_search(
                 board,
-                policy_logits.squeeze(0),
-                temperature,
-                model=model,
-                alpha=alpha,
+                model,
+                device,
+                num_simulations=num_simulations,
+                c_puct=c_puct,
+                temperature=temp,
+                add_noise=use_exploration,
             )
+
             game_states.append(state)
-            game_policies.append(policy_index)
+            game_policies.append(policy_target)
             board.push(move)
+            move_count += 1
 
         result = board.result()
         if result == "1-0":
@@ -196,8 +217,11 @@ def _generate_games(
         all_states.extend(game_states)
         all_policies.extend(game_policies)
 
+        if (game_idx + 1) % 100 == 0 or game_idx == 0:
+            print(f"  Generated {game_idx + 1}/{num_games} games")
+
     return ChessDataset(
         torch.stack(all_states),
-        torch.tensor(all_policies, dtype=torch.long),
+        torch.stack(all_policies),
         torch.tensor(all_values, dtype=torch.float32),
     )
