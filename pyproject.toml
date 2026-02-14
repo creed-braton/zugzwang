@@ -13,7 +13,7 @@ dependencies = [
     "python-chess==1.999",
     "uvicorn[standard]==0.34.0",
     "fastapi==0.119.0",
-    "tqdm==4.67.1",
+    "tqdm==4.67.3",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +27,12 @@ dev = [
 [[tool.uv.index]]
 url = "https://download.pytorch.org/whl/cu130"
 name = "pytorch-cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+torchaudio = { index = "pytorch-cu130" }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

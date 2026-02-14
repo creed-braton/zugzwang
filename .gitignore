@@ -24,6 +24,7 @@
 **/*.egg-info
 **/__pycache__
 **/*.pth
+**/build
 
 # Editor directories and files
 **/.vscode/*
