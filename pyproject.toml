@@ -13,6 +13,7 @@ dependencies = [
     "python-chess==1.999",
     "uvicorn[standard]==0.34.0",
     "fastapi==0.119.0",
+    "tqdm==4.67.1",
 ]
 
 [project.optional-dependencies]

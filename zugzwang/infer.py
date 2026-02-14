@@ -18,6 +18,9 @@ class InferenceBatcher:
         self._timeout = timeout
         self.history_steps = history_steps
         self._queue = asyncio.Queue()
+        self.total_inferences = 0
+        self.total_batches = 0
+        self.start_time = None
 
     async def infer(self, board):
         tensor = board_to_tensor(board, self.history_steps)
@@ -34,6 +37,7 @@ class InferenceBatcher:
 
     async def run(self):
         loop = asyncio.get_event_loop()
+        self.start_time = loop.time()
         while True:
             # Block until at least one request arrives
             tensor, future = await self._queue.get()
@@ -60,6 +64,9 @@ class InferenceBatcher:
             policy, value = await loop.run_in_executor(
                 None, partial(self._forward, batch)
             )
+
+            self.total_batches += 1
+            self.total_inferences += len(batch_tensors)
 
             # Resolve futures so each coroutine gets its result
             for i, fut in enumerate(batch_futures):

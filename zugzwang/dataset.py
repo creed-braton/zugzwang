@@ -2,6 +2,7 @@ import asyncio
 
 import chess
 import torch
+from tqdm import tqdm
 
 from .encode import POLICY_DIM, board_to_tensor, legal_moves
 from .infer import InferenceBatcher
@@ -93,14 +94,35 @@ async def _self_play_async(
     batcher = InferenceBatcher(model, device, batch_size=batch_size)
     batcher_task = asyncio.create_task(batcher.run())
 
+    total_moves = 0
+    pbar = tqdm(total=num_games, unit="game", desc="Self-play")
+
+    async def _play_and_track():
+        nonlocal total_moves
+        states, policies, values = await _generate_game(
+            batcher, num_simulations, temperature, temp_threshold
+        )
+        total_moves += len(states)
+
+        postfix = {"moves": total_moves}
+        if batcher.start_time is not None:
+            elapsed = asyncio.get_event_loop().time() - batcher.start_time
+            if elapsed > 0:
+                postfix["inf/s"] = int(batcher.total_inferences / elapsed)
+            if batcher.total_batches > 0:
+                postfix["batch"] = round(
+                    batcher.total_inferences / batcher.total_batches, 1
+                )
+        pbar.set_postfix(postfix)
+        pbar.update(1)
+
+        return states, policies, values
+
     results = await asyncio.gather(
-        *[
-            _generate_game(
-                batcher, num_simulations, temperature, temp_threshold
-            )
-            for _ in range(num_games)
-        ]
+        *[_play_and_track() for _ in range(num_games)]
     )
+
+    pbar.close()
 
     batcher_task.cancel()
     try:
