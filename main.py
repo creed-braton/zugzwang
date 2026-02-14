@@ -11,7 +11,7 @@ def main():
 
     # Model architecture
     parser.add_argument(
-        "--num-blocks", type=int, default=6, help="number of residual blocks"
+        "--res-blocks", type=int, default=6, help="number of residual blocks"
     )
     parser.add_argument(
         "--channels",
@@ -37,7 +37,7 @@ def main():
 
     # Self-play
     parser.add_argument(
-        "--num-games", type=int, default=256, help="games per iteration"
+        "--num-games", type=int, default=1024, help="games per iteration"
     )
     parser.add_argument(
         "--num-simulations",
@@ -49,7 +49,7 @@ def main():
         "--temperature", type=float, default=1.0, help="MCTS temperature"
     )
     parser.add_argument(
-        "--temp-threshold",
+        "--greedy-threshold",
         type=int,
         default=30,
         help="move number after which greedy selection is used",
@@ -63,10 +63,13 @@ def main():
         help="number of training iterations",
     )
     parser.add_argument(
-        "--num-epochs", type=int, default=5, help="training epochs per iteration"
+        "--num-epochs",
+        type=int,
+        default=5,
+        help="training epochs per iteration",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=128, help="batch size"
+        "--batch-size", type=int, default=256, help="batch size"
     )
     parser.add_argument(
         "--log-interval", type=int, default=10, help="log every N batches"

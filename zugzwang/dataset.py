@@ -23,7 +23,7 @@ class Dataset(torch.utils.data.Dataset):
 
 
 async def _generate_game(
-    batcher, num_simulations, temperature=1.0, temp_threshold=30
+    batcher, num_simulations, temperature=1.0, greedy_threshold=30
 ):
     board = chess.Board()
     states = []
@@ -48,7 +48,7 @@ async def _generate_game(
         policies.append(policy_target)
 
         # Move selection: sample early, greedy later
-        if move_count < temp_threshold:
+        if move_count < greedy_threshold:
             visit_counts = torch.tensor(
                 [root.children[m].visit_count for m in moves],
                 dtype=torch.float32,
@@ -89,7 +89,7 @@ async def _self_play_async(
     num_simulations,
     batch_size,
     temperature,
-    temp_threshold,
+    greedy_threshold,
     history_steps=8,
 ):
     batcher = InferenceBatcher(model, device, batch_size=batch_size, history_steps=history_steps)
@@ -101,7 +101,7 @@ async def _self_play_async(
     async def _play_and_track():
         nonlocal total_moves
         states, policies, values = await _generate_game(
-            batcher, num_simulations, temperature, temp_threshold
+            batcher, num_simulations, temperature, greedy_threshold
         )
         total_moves += len(states)
 
@@ -153,7 +153,7 @@ def self_play(
     num_simulations=400,
     batch_size=64,
     temperature=1.0,
-    temp_threshold=30,
+    greedy_threshold=30,
     history_steps=8,
 ) -> Dataset:
     return asyncio.run(
@@ -164,7 +164,7 @@ def self_play(
             num_simulations,
             batch_size,
             temperature,
-            temp_threshold,
+            greedy_threshold,
             history_steps,
         )
     )

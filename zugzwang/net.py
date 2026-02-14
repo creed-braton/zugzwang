@@ -21,7 +21,7 @@ class ResBlock(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self, input_dim, num_blocks=6, channels=128):
+    def __init__(self, input_dim, res_blocks=6, channels=128):
         super().__init__()
 
         self.input_conv = nn.Conv2d(
@@ -30,7 +30,7 @@ class Net(nn.Module):
         self.input_bn = nn.BatchNorm2d(channels)
 
         self.res_blocks = nn.Sequential(
-            *[ResBlock(channels) for _ in range(num_blocks)]
+            *[ResBlock(channels) for _ in range(res_blocks)]
         )
 
         self.policy_conv = nn.Conv2d(channels, 32, 1, bias=False)

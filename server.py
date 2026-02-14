@@ -19,7 +19,13 @@ from zugzwang.search import Node
 # CLI
 # ---------------------------------------------------------------------------
 parser = argparse.ArgumentParser(description="Zugzwang server")
-parser.add_argument("model_id", type=str, help="UUID of the model to run")
+parser.add_argument(
+    "model_id",
+    type=str,
+    nargs="?",
+    default=None,
+    help="UUID of the model to run (omit to load the most recently updated model)",
+)
 cli_args = parser.parse_args()
 
 # ---------------------------------------------------------------------------
@@ -35,7 +41,25 @@ logger = logging.getLogger("zugzwang.server")
 # ---------------------------------------------------------------------------
 # Load checkpoint & model
 # ---------------------------------------------------------------------------
-checkpoint_path = os.path.join("models", f"{cli_args.model_id}.pth")
+if cli_args.model_id is None:
+    models_dir = "models"
+    best_path = None
+    best_updated_at = ""
+    for filename in os.listdir(models_dir):
+        if not filename.endswith(".pth"):
+            continue
+        path = os.path.join(models_dir, filename)
+        cp = torch.load(path, map_location="cpu")
+        updated_at = cp.get("updated_at", "")
+        if updated_at > best_updated_at:
+            best_updated_at = updated_at
+            best_path = path
+    if best_path is None:
+        logger.error("No .pth checkpoints found in %s/", models_dir)
+        sys.exit(1)
+    checkpoint_path = best_path
+else:
+    checkpoint_path = os.path.join("models", f"{cli_args.model_id}.pth")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger.info("Loading checkpoint: %s", checkpoint_path)
 logger.info("Device: %s", device)
@@ -51,7 +75,7 @@ logger.info("Training iteration: %d", checkpoint["iteration"])
 
 input_dim = 14 * params["history_steps"] + 7
 model = Net(
-    input_dim, num_blocks=params["num_blocks"], channels=params["channels"]
+    input_dim, res_blocks=params["res_blocks"], channels=params["channels"]
 ).to(device)
 model.load_state_dict(checkpoint["model_state_dict"])
 

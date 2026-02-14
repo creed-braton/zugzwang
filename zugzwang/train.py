@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime
 from logging import Logger
 
 import torch
@@ -16,7 +17,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
 
     device = torch.device("cuda" if args.cuda and torch.cuda.is_available() else "cpu")
     input_dim = 14 * args.history_steps + 7
-    model = Net(input_dim, num_blocks=args.num_blocks, channels=args.channels).to(device)
+    model = Net(input_dim, res_blocks=args.res_blocks, channels=args.channels).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
@@ -24,6 +25,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
 
     if id is None:
         id = uuid.uuid4()
+        created_at = datetime.now().isoformat()
         logger.info("Starting new training run %s", id)
     else:
         checkpoint_path = os.path.join("models", f"{id}.pth")
@@ -31,6 +33,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_iteration = checkpoint["iteration"]
+        created_at = checkpoint.get("created_at")
 
         saved_params = checkpoint.get("hyper_parameters", {})
         diff = {
@@ -45,6 +48,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
             if input("Continue with new hyper-parameters? [y/N] ").lower() != "y":
                 logger.info("Aborting training")
                 return
+            logger.info("Hyper-parameters updated to new values")
 
         logger.info(
             "Resuming run %s from iteration %d", id, start_iteration
@@ -65,7 +69,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
             num_simulations=args.num_simulations,
             batch_size=args.batch_size,
             temperature=args.temperature,
-            temp_threshold=args.temp_threshold,
+            greedy_threshold=args.greedy_threshold,
             history_steps=args.history_steps,
         )
 
@@ -109,6 +113,8 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
                 "optimizer_state_dict": optimizer.state_dict(),
                 "iteration": iteration,
                 "hyper_parameters": hyper_parameters,
+                "created_at": created_at,
+                "updated_at": datetime.now().isoformat(),
             },
             save_path,
         )
