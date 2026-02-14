@@ -1,5 +1,9 @@
-import glob
+import argparse
+import asyncio
+import logging
 import os
+import sys
+from contextlib import asynccontextmanager
 
 import chess
 import torch
@@ -7,22 +11,80 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from encode import board_to_tensor, sample_move
-from model import ZugzwangNet
+from zugzwang.infer import InferenceBatcher
+from zugzwang.net import Net
+from zugzwang.search import Node
 
-app = FastAPI()
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+parser = argparse.ArgumentParser(description="Zugzwang server")
+parser.add_argument("model_id", type=str, help="UUID of the model to run")
+cli_args = parser.parse_args()
 
-# Load the most recent model checkpoint
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger("zugzwang.server")
+
+# ---------------------------------------------------------------------------
+# Load checkpoint & model
+# ---------------------------------------------------------------------------
+checkpoint_path = os.path.join("models", f"{cli_args.model_id}.pth")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = ZugzwangNet().to(device)
+logger.info("Loading checkpoint: %s", checkpoint_path)
+logger.info("Device: %s", device)
 
-checkpoints = sorted(glob.glob(os.path.join("models", "*.pth")))
-if checkpoints:
-    model.load_state_dict(torch.load(checkpoints[-1], map_location=device))
-    print(f"Loaded checkpoint: {checkpoints[-1]}")
-else:
-    print("WARNING: No checkpoint found in models/, using random weights")
-model.eval()
+checkpoint = torch.load(checkpoint_path, map_location=device)
+params = checkpoint["hyper_parameters"]
+
+logger.info("Model hyper-parameters:")
+for key, value in sorted(params.items()):
+    logger.info("  %s = %s", key, value)
+
+logger.info("Training iteration: %d", checkpoint["iteration"])
+
+input_dim = 14 * params["history_steps"] + 7
+model = Net(
+    input_dim, num_blocks=params["num_blocks"], channels=params["channels"]
+).to(device)
+model.load_state_dict(checkpoint["model_state_dict"])
+
+# ---------------------------------------------------------------------------
+# Inference batcher (batch_size=1 so requests are processed immediately)
+# ---------------------------------------------------------------------------
+batcher = InferenceBatcher(
+    model, device, batch_size=1, history_steps=params["history_steps"]
+)
+
+# MCTS parameters from model metadata
+num_simulations = params["num_simulations"]
+temperature = params["temperature"]
+logger.info(
+    "MCTS: num_simulations=%d, temperature=%.2f", num_simulations, temperature
+)
+
+
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(batcher.run())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 class MoveRequest(BaseModel):
@@ -35,16 +97,16 @@ class MoveResponse(BaseModel):
 
 
 @app.post("/move", response_model=MoveResponse)
-def get_move(req: MoveRequest):
+async def get_move(req: MoveRequest):
     board = chess.Board(req.fen)
-    state = board_to_tensor(board)
-    with torch.no_grad():
-        _, policy_logits, _ = model(state.unsqueeze(0).to(device))
-    move, _, _ = sample_move(
-        board, policy_logits.squeeze(0), temperature=0.1, model=model
-    )
-    board.push(move)
-    return MoveResponse(move=move.uci(), fen=board.fen())
+    root = Node()
+
+    for _ in range(num_simulations):
+        await root.simulate(board, batcher.infer, temperature=temperature)
+
+    best_move = max(root.children, key=lambda m: root.children[m].visit_count)
+    board.push(best_move)
+    return MoveResponse(move=best_move.uci(), fen=board.fen())
 
 
 @app.get("/", response_class=HTMLResponse)
