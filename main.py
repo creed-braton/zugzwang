@@ -57,7 +57,7 @@ def main():
 
     # Training
     parser.add_argument(
-        "--iterations",
+        "--num-iterations",
         type=int,
         default=50,
         help="number of training iterations",

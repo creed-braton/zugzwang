@@ -90,8 +90,9 @@ async def _self_play_async(
     batch_size,
     temperature,
     temp_threshold,
+    history_steps=8,
 ):
-    batcher = InferenceBatcher(model, device, batch_size=batch_size)
+    batcher = InferenceBatcher(model, device, batch_size=batch_size, history_steps=history_steps)
     batcher_task = asyncio.create_task(batcher.run())
 
     total_moves = 0
@@ -153,6 +154,7 @@ def self_play(
     batch_size=64,
     temperature=1.0,
     temp_threshold=30,
+    history_steps=8,
 ) -> Dataset:
     return asyncio.run(
         _self_play_async(
@@ -163,5 +165,6 @@ def self_play(
             batch_size,
             temperature,
             temp_threshold,
+            history_steps,
         )
     )

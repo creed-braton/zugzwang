@@ -22,9 +22,9 @@ def board_to_tensor(board: chess.Board, history_steps=8) -> torch.Tensor:
             plane = "pnbrqk".index(p) + plane_offset
             tensor[offset + plane, row, col] = 1.0
 
-        if board.is_repetition(1):
-            tensor[offset + 12] = 1.0
         if board.is_repetition(2):
+            tensor[offset + 12] = 1.0
+        if board.is_repetition(3):
             tensor[offset + 13] = 1.0
 
         if board.move_stack:

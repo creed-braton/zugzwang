@@ -52,10 +52,10 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
 
     save_path = os.path.join("models", f"{id}.pth")
 
-    for iteration in range(start_iteration + 1, start_iteration + args.iterations + 1):
+    for iteration in range(start_iteration + 1, start_iteration + args.num_iterations + 1):
         logger.info(
             "Iteration %d/%d: generating %d games",
-            iteration, start_iteration + args.iterations, args.num_games,
+            iteration, start_iteration + args.num_iterations, args.num_games,
         )
 
         dataset = self_play(
@@ -66,6 +66,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
             batch_size=args.batch_size,
             temperature=args.temperature,
             temp_threshold=args.temp_threshold,
+            history_steps=args.history_steps,
         )
 
         loader = torch.utils.data.DataLoader(
