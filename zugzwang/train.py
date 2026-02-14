@@ -74,7 +74,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
         )
 
         model.train()
-        for epoch in range(1, args.epochs + 1):
+        for epoch in range(1, args.num_epochs + 1):
             for batch_idx, (data, policy_target, value_target) in enumerate(loader):
                 data = data.to(device)
                 policy_target = policy_target.to(device)

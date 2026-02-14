@@ -37,12 +37,12 @@ def main():
 
     # Self-play
     parser.add_argument(
-        "--num-games", type=int, default=512, help="games per iteration"
+        "--num-games", type=int, default=256, help="games per iteration"
     )
     parser.add_argument(
         "--num-simulations",
         type=int,
-        default=400,
+        default=100,
         help="MCTS simulations per move",
     )
     parser.add_argument(
@@ -63,10 +63,10 @@ def main():
         help="number of training iterations",
     )
     parser.add_argument(
-        "--epochs", type=int, default=5, help="training epochs per iteration"
+        "--num-epochs", type=int, default=5, help="training epochs per iteration"
     )
     parser.add_argument(
-        "--batch-size", type=int, default=64, help="batch size"
+        "--batch-size", type=int, default=128, help="batch size"
     )
     parser.add_argument(
         "--log-interval", type=int, default=10, help="log every N batches"
