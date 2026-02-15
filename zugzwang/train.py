@@ -13,7 +13,11 @@ from .net import Net
 def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
     os.makedirs("models", exist_ok=True)
 
-    hyper_parameters = vars(args)
+    hyper_parameters = {
+        k: v
+        for k, v in vars(args).items()
+        if k not in ("resume", "cuda", "log_interval")
+    }
 
     device = torch.device("cuda" if args.cuda and torch.cuda.is_available() else "cpu")
     input_dim = 14 * args.history_steps + 7
@@ -54,12 +58,20 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
             "Resuming run %s from iteration %d", id, start_iteration
         )
 
+    if start_iteration >= args.num_iterations:
+        logger.info(
+            "Already completed %d/%d iterations, nothing to do",
+            start_iteration,
+            args.num_iterations,
+        )
+        return
+
     save_path = os.path.join("models", f"{id}.pth")
 
-    for iteration in range(start_iteration + 1, start_iteration + args.num_iterations + 1):
+    for iteration in range(start_iteration + 1, args.num_iterations + 1):
         logger.info(
             "Iteration %d/%d: generating %d games",
-            iteration, start_iteration + args.num_iterations, args.num_games,
+            iteration, args.num_iterations, args.num_games,
         )
 
         dataset = self_play(
