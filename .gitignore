@@ -24,7 +24,12 @@
 **/*.egg-info
 **/__pycache__
 **/*.pth
+**/*.onnx*
+**/*.bin
 **/build
+
+# C directories and files
+worker/lib
 
 # Editor directories and files
 **/.vscode/*
