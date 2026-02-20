@@ -58,7 +58,10 @@ void make_move(Board *b, uint16_t move);
 void undo_move(Board *b);
 
 int  repetitions(const Board *b);
-int  insufficient_material(const Board *b);
 int  game_result(const Board *b, int num_legal_moves);
+
+void print_board(const Board *b);
+void move_to_str(uint16_t move, char *buf);
+int  str_to_move(Board *b, const char *str, uint16_t *out);
 
 #endif

@@ -1,4 +1,5 @@
 #include "chess.h"
+#include <stdio.h>
 #include <string.h>
 
 typedef struct {
@@ -900,7 +901,7 @@ void undo_move(Board *b) {
     }
 }
 
-int insufficient_material(const Board *b) {
+static int insufficient_material(const Board *b) {
   if (b->pawns | b->rooks | b->queens)
     return 0;
 
@@ -957,4 +958,79 @@ int game_result(const Board *b, int num_legal_moves) {
     return 0;
 
   return 2;
+}
+
+void print_board(const Board *b) {
+  const char chars[] = "PNBRQKpnbrqk";
+  for (int rank = 7; rank >= 0; rank--) {
+    printf("%d  ", rank + 1);
+    for (int file = 0; file < 8; file++) {
+      int piece = b->squares[rank * 8 + file];
+      putchar(piece == EMPTY ? '.' : chars[piece]);
+      if (file < 7) putchar(' ');
+    }
+    putchar('\n');
+  }
+  printf("   a b c d e f g h\n");
+}
+
+void move_to_str(uint16_t move, char *buf) {
+  int from = MOVE_FROM(move);
+  int to   = MOVE_TO(move);
+  int flags = MOVE_FLAGS(move);
+
+  buf[0] = 'a' + FILE(from);
+  buf[1] = '1' + RANK(from);
+  buf[2] = 'a' + FILE(to);
+  buf[3] = '1' + RANK(to);
+
+  if (flags >= MF_PROMO_N && flags <= MF_PROMO_Q) {
+    const char promo[] = "nbrq";
+    buf[4] = promo[(flags >> 12) - 1];
+    buf[5] = '\0';
+  } else {
+    buf[4] = '\0';
+  }
+}
+
+int str_to_move(Board *b, const char *str, uint16_t *out) {
+  if (!str[0] || !str[1] || !str[2] || !str[3])
+    return 0;
+
+  int ff = str[0] - 'a', fr = str[1] - '1';
+  int tf = str[2] - 'a', tr = str[3] - '1';
+
+  if (ff < 0 || ff > 7 || fr < 0 || fr > 7 ||
+      tf < 0 || tf > 7 || tr < 0 || tr > 7)
+    return 0;
+
+  int from_sq = fr * 8 + ff;
+  int to_sq   = tr * 8 + tf;
+
+  int promo_flag = 0;
+  if (str[4]) {
+    switch (str[4]) {
+      case 'n': promo_flag = MF_PROMO_N; break;
+      case 'b': promo_flag = MF_PROMO_B; break;
+      case 'r': promo_flag = MF_PROMO_R; break;
+      case 'q': promo_flag = MF_PROMO_Q; break;
+      default: return 0;
+    }
+  }
+
+  uint16_t moves[NUM_MOVES];
+  int n = legal_moves(b, moves);
+
+  for (int i = 0; i < n; i++) {
+    if (MOVE_FROM(moves[i]) != from_sq || MOVE_TO(moves[i]) != to_sq)
+      continue;
+    int flags = MOVE_FLAGS(moves[i]);
+    if (promo_flag) {
+      if (flags == promo_flag) { *out = moves[i]; return 1; }
+    } else {
+      if (flags < MF_PROMO_N || flags > MF_PROMO_Q) { *out = moves[i]; return 1; }
+    }
+  }
+
+  return 0;
 }
