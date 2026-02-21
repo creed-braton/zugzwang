@@ -46,6 +46,7 @@ struct InferenceBatcher {
 
     InferRequest  **queue;
     int             queue_count;
+    int             queue_cap;
     pthread_mutex_t queue_mutex;
     pthread_cond_t  queue_cond;
 
@@ -73,8 +74,8 @@ static void softmax(float *x, int n) {
 
 /* ── Board Encoding ───────────────────────────────────────────────── */
 
-static void board_to_tensor(Board *board, int history_steps,
-                            int tensor_planes, float *tensor) {
+void board_to_tensor(Board *board, int history_steps,
+                     int tensor_planes, float *tensor) {
     memset(tensor, 0, (size_t)tensor_planes * 64 * sizeof(float));
 
     int vertical_flip = (board->turn == 1);
@@ -229,6 +230,8 @@ static void *worker_loop(void *arg) {
             }
         }
 
+        /* Wake any infer() callers blocked on backpressure */
+        pthread_cond_broadcast(&b->queue_cond);
         pthread_mutex_unlock(&b->queue_mutex);
 
         if (batch_count == 0) continue;
@@ -276,10 +279,13 @@ static void *worker_loop(void *arg) {
         if (ort_ok) {
             float *policy_data = NULL;
             float *value_data  = NULL;
-            b->api->GetTensorMutableData(outputs[0],
-                                         (void **)&policy_data);
-            b->api->GetTensorMutableData(outputs[1],
-                                         (void **)&value_data);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
+            (void)b->api->GetTensorMutableData(outputs[0],
+                                               (void **)&policy_data);
+            (void)b->api->GetTensorMutableData(outputs[1],
+                                               (void **)&value_data);
+#pragma GCC diagnostic pop
 
             for (int i = 0; i < batch_count; i++) {
                 softmax(policy_data + i * NUM_MOVES, NUM_MOVES);
@@ -312,7 +318,8 @@ static void *worker_loop(void *arg) {
 /* ── Public API ───────────────────────────────────────────────────── */
 
 InferenceBatcher *init_batcher(const char *model_path, int batch_size,
-                               double timeout_sec, int history_steps) {
+                               double timeout_sec, int history_steps,
+                               int num_search_threads) {
     if (history_steps > MAX_HISTORY_STEPS) {
         fprintf(stderr, "infer: history_steps %d exceeds max %d\n",
                 history_steps, MAX_HISTORY_STEPS);
@@ -353,8 +360,12 @@ InferenceBatcher *init_batcher(const char *model_path, int batch_size,
                                           OrtMemTypeDefault,
                                           &b->memory_info));
 
-    /* Queue (capacity 2x batch_size for safety) */
-    b->queue = calloc((size_t)batch_size * 2, sizeof(InferRequest *));
+    /* Queue capacity: must hold all search threads + a full batch */
+    int cap_a = batch_size * 2;
+    int cap_b = num_search_threads + batch_size;
+    int queue_cap = cap_a > cap_b ? cap_a : cap_b;
+    b->queue_cap = queue_cap;
+    b->queue = calloc((size_t)queue_cap, sizeof(InferRequest *));
     if (!b->queue) goto cleanup;
 
     pthread_mutex_init(&b->queue_mutex, NULL);
@@ -406,8 +417,10 @@ int infer(InferenceBatcher *b, Board *board, InferResult *result) {
 
     board_to_tensor(board, b->history_steps, b->tensor_planes, req.tensor);
 
-    /* Queue request */
+    /* Queue request (with backpressure if queue is full) */
     pthread_mutex_lock(&b->queue_mutex);
+    while (b->queue_count >= b->queue_cap && !b->shutdown)
+        pthread_cond_wait(&b->queue_cond, &b->queue_mutex);
     b->queue[b->queue_count++] = &req;
     pthread_cond_signal(&b->queue_cond);
     pthread_mutex_unlock(&b->queue_mutex);
@@ -424,4 +437,12 @@ int infer(InferenceBatcher *b, Board *board, InferResult *result) {
     pthread_cond_destroy(&req.cond);
 
     return 0;
+}
+
+int batcher_tensor_planes(const InferenceBatcher *b) {
+    return b->tensor_planes;
+}
+
+int batcher_history_steps(const InferenceBatcher *b) {
+    return b->history_steps;
 }

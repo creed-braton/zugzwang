@@ -1,4 +1,5 @@
 #include "chess.h"
+#include "rng.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,53 +11,23 @@ typedef struct {
   uint64_t en_passant[NUM_EP_FILES];
 } ZobristTable;
 
-/* --- PRNG (xoshiro256**) for high-quality random 64-bit numbers --- */
-
-static uint64_t rng_s[4];
-
-static uint64_t rotl(uint64_t x, int k) {
-  return (x << k) | (x >> (64 - k));
-}
-
-static uint64_t rng_next(void) {
-  uint64_t result = rotl(rng_s[1] * 5, 7) * 9;
-  uint64_t t = rng_s[1] << 17;
-  rng_s[2] ^= rng_s[0];
-  rng_s[3] ^= rng_s[1];
-  rng_s[1] ^= rng_s[2];
-  rng_s[0] ^= rng_s[3];
-  rng_s[2] ^= t;
-  rng_s[3] = rotl(rng_s[3], 45);
-  return result;
-}
-
-static void rng_seed(uint64_t seed) {
-  /* SplitMix64 to seed the state */
-  for (int i = 0; i < 4; i++) {
-    seed += 0x9e3779b97f4a7c15ULL;
-    uint64_t z = seed;
-    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
-    rng_s[i] = z ^ (z >> 31);
-  }
-}
-
 static ZobristTable zt;
 
 void init_zobrist_table(void) {
-  rng_seed(42ULL);
+  Rng rng;
+  rng_seed(&rng, 42ULL);
 
   for (int p = 0; p < NUM_PIECES; p++)
     for (int sq = 0; sq < NUM_SQUARES; sq++)
-      zt.piece_sq[p][sq] = rng_next();
+      zt.piece_sq[p][sq] = rng_next_u64(&rng);
 
-  zt.side_to_move = rng_next();
+  zt.side_to_move = rng_next_u64(&rng);
 
   for (int i = 0; i < NUM_CASTLING; i++)
-    zt.castling[i] = rng_next();
+    zt.castling[i] = rng_next_u64(&rng);
 
   for (int i = 0; i < NUM_EP_FILES; i++)
-    zt.en_passant[i] = rng_next();
+    zt.en_passant[i] = rng_next_u64(&rng);
 }
 
 static uint64_t hash(const Board *b) {
