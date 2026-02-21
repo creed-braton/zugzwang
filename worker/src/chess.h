@@ -16,12 +16,18 @@ enum {
   EMPTY = -1
 };
 
+enum {
+  MT_NORMAL, MT_DOUBLE, MT_CASTLE_K, MT_CASTLE_Q,
+  MT_EP, MT_PROMO_Q, MT_PROMO_N, MT_PROMO_B, MT_PROMO_R
+};
+
 typedef struct {
     uint16_t move;
     int8_t   captured;
     uint8_t  castling;
     int8_t   ep_file;
     uint8_t  halfmove;
+    uint8_t  type;
     uint64_t hash;
 } Undo;
 
@@ -53,15 +59,11 @@ void init_zobrist_table(void);
 void init_lookup_tables(void);
 void init_board(Board *b);
 
-int  legal_moves(Board *b, uint16_t moves[NUM_MOVES]);
+int  legal_moves(const Board *b, uint16_t moves[NUM_MOVES]);
 void make_move(Board *b, uint16_t move);
 void undo_move(Board *b);
 
 int  repetitions(const Board *b);
 int  game_result(const Board *b, int num_legal_moves);
-
-void print_board(const Board *b);
-void move_to_str(uint16_t move, char *buf);
-int  str_to_move(Board *b, const char *str, uint16_t *out);
 
 #endif

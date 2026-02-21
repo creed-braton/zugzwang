@@ -41,7 +41,7 @@ int main(void) {
 
         printf("Legal:");
         for (int i = 0; i < n; i++) {
-            move_to_str(moves[i], buf);
+            move_to_str(moves[i], &b, buf);
             printf(" %s", buf);
         }
         printf("\n");

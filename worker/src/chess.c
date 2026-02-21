@@ -1,5 +1,6 @@
 #include "chess.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct {
@@ -333,21 +334,6 @@ static void init_pawn_attacks(void) {
   }
 }
 
-#define MF_NONE      0
-#define MF_PROMO_N   (1 << 12)
-#define MF_PROMO_B   (2 << 12)
-#define MF_PROMO_R   (3 << 12)
-#define MF_PROMO_Q   (4 << 12)
-#define MF_EP        (5 << 12)
-#define MF_CASTLE_K  (6 << 12)
-#define MF_CASTLE_Q  (7 << 12)
-#define MF_DOUBLE    (8 << 12)
-
-#define ENCODE(from, to, f) ((uint16_t)((from) | ((to) << 6) | (f)))
-#define MOVE_FROM(m)  ((m) & 0x3F)
-#define MOVE_TO(m)    (((m) >> 6) & 0x3F)
-#define MOVE_FLAGS(m) ((m) & 0xF000)
-
 #define RANK1_BB  0x00000000000000FFULL
 #define RANK2_BB  0x000000000000FF00ULL
 #define RANK3_BB  0x0000000000FF0000ULL
@@ -396,8 +382,9 @@ static inline uint64_t attackers_to(const Board *b, int sq, uint64_t occ) {
     | (king_attacks[sq] & b->kings);
 }
 
-int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
+int legal_moves(const Board *b, uint16_t moves[NUM_MOVES]) {
   const int us      = b->turn;
+  const int flip    = us ? 56 : 0;
   const uint64_t occ   = b->white | b->black;
   const uint64_t side  = us == 0 ? b->white : b->black;
   const uint64_t enemy = us == 0 ? b->black : b->white;
@@ -450,7 +437,7 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
       while (atk) {
         int to = __builtin_ctzll(atk);
         atk &= atk - 1;
-        moves[count++] = ENCODE(from, to, MF_NONE);
+        moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
       }
     }
   }
@@ -467,7 +454,7 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
       while (atk) {
         int to = __builtin_ctzll(atk);
         atk &= atk - 1;
-        moves[count++] = ENCODE(from, to, MF_NONE);
+        moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
       }
     }
   }
@@ -484,7 +471,7 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
       while (atk) {
         int to = __builtin_ctzll(atk);
         atk &= atk - 1;
-        moves[count++] = ENCODE(from, to, MF_NONE);
+        moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
       }
     }
   }
@@ -501,7 +488,7 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
       while (atk) {
         int to = __builtin_ctzll(atk);
         atk &= atk - 1;
-        moves[count++] = ENCODE(from, to, MF_NONE);
+        moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
       }
     }
   }
@@ -531,7 +518,7 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
         int from = to - dir;
         if ((BB(from) & pinned) && !(BB(to) & pin_ray[from]))
           continue;
-        moves[count++] = ENCODE(from, to, MF_NONE);
+        moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
       }
     }
 
@@ -543,7 +530,7 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
         int from = to - 2 * dir;
         if ((BB(from) & pinned) && !(BB(to) & pin_ray[from]))
           continue;
-        moves[count++] = ENCODE(from, to, MF_DOUBLE);
+        moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
       }
     }
 
@@ -555,10 +542,10 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
         int from = to - dir;
         if ((BB(from) & pinned) && !(BB(to) & pin_ray[from]))
           continue;
-        moves[count++] = ENCODE(from, to, MF_PROMO_Q);
-        moves[count++] = ENCODE(from, to, MF_PROMO_R);
-        moves[count++] = ENCODE(from, to, MF_PROMO_B);
-        moves[count++] = ENCODE(from, to, MF_PROMO_N);
+        moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
+        moves[count++] = (uint16_t)(4096 + 2*24 + (from%8)*3 + ((to%8)-(from%8)+1));
+        moves[count++] = (uint16_t)(4096 + 1*24 + (from%8)*3 + ((to%8)-(from%8)+1));
+        moves[count++] = (uint16_t)(4096 + 0*24 + (from%8)*3 + ((to%8)-(from%8)+1));
       }
     }
 
@@ -576,15 +563,15 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
         while (cap_normal) {
           int to = __builtin_ctzll(cap_normal);
           cap_normal &= cap_normal - 1;
-          moves[count++] = ENCODE(from, to, MF_NONE);
+          moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
         }
         while (cap_promo) {
           int to = __builtin_ctzll(cap_promo);
           cap_promo &= cap_promo - 1;
-          moves[count++] = ENCODE(from, to, MF_PROMO_Q);
-          moves[count++] = ENCODE(from, to, MF_PROMO_R);
-          moves[count++] = ENCODE(from, to, MF_PROMO_B);
-          moves[count++] = ENCODE(from, to, MF_PROMO_N);
+          moves[count++] = (uint16_t)((from^flip)*64 + (to^flip));
+          moves[count++] = (uint16_t)(4096 + 2*24 + (from%8)*3 + ((to%8)-(from%8)+1));
+          moves[count++] = (uint16_t)(4096 + 1*24 + (from%8)*3 + ((to%8)-(from%8)+1));
+          moves[count++] = (uint16_t)(4096 + 0*24 + (from%8)*3 + ((to%8)-(from%8)+1));
         }
       }
     }
@@ -618,7 +605,7 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
             continue;
         }
 
-        moves[count++] = ENCODE(from, ep_to, MF_EP);
+        moves[count++] = (uint16_t)((from^flip)*64 + (ep_to^flip));
       }
     }
   }
@@ -630,25 +617,25 @@ int legal_moves(Board *b, uint16_t moves[NUM_MOVES]) {
         !(occ & (BB(5) | BB(6))) &&
         !(attackers_to(b, 5, occ) & enemy) &&
         !(attackers_to(b, 6, occ) & enemy))
-        moves[count++] = ENCODE(4, 6, MF_CASTLE_K);
+        moves[count++] = (uint16_t)((4^flip)*64 + (6^flip));
 
       if ((b->castling & 2) &&
         !(occ & (BB(1) | BB(2) | BB(3))) &&
         !(attackers_to(b, 2, occ) & enemy) &&
         !(attackers_to(b, 3, occ) & enemy))
-        moves[count++] = ENCODE(4, 2, MF_CASTLE_Q);
+        moves[count++] = (uint16_t)((4^flip)*64 + (2^flip));
     } else {
       if ((b->castling & 4) &&
         !(occ & (BB(61) | BB(62))) &&
         !(attackers_to(b, 61, occ) & enemy) &&
         !(attackers_to(b, 62, occ) & enemy))
-        moves[count++] = ENCODE(60, 62, MF_CASTLE_K);
+        moves[count++] = (uint16_t)((60^flip)*64 + (62^flip));
 
       if ((b->castling & 8) &&
         !(occ & (BB(57) | BB(58) | BB(59))) &&
         !(attackers_to(b, 58, occ) & enemy) &&
         !(attackers_to(b, 59, occ) & enemy))
-        moves[count++] = ENCODE(60, 58, MF_CASTLE_Q);
+        moves[count++] = (uint16_t)((60^flip)*64 + (58^flip));
     }
   }
 
@@ -661,7 +648,7 @@ king_moves:
       int to = __builtin_ctzll(atk);
       atk &= atk - 1;
       if (!(attackers_to(b, to, occ_no_k) & enemy))
-        moves[count++] = ENCODE(ksq, to, MF_NONE);
+        moves[count++] = (uint16_t)((ksq^flip)*64 + (to^flip));
     }
   }
 
@@ -702,14 +689,45 @@ static const uint8_t castle_mask[64] = {
 /* ── make_move ──────────────────────────────────────────────────── */
 
 void make_move(Board *b, uint16_t move) {
-    const int from  = MOVE_FROM(move);
-    const int to    = MOVE_TO(move);
-    const int flags = MOVE_FLAGS(move);
-    const int us    = b->turn;
+    const int us   = b->turn;
+    const int flip = us ? 56 : 0;
+    int from, to;
+    int promo = -1;
+
+    if (move >= 4096) {
+        int off  = move - 4096;
+        promo    = off / 24;              /* 0=N, 1=B, 2=R */
+        int file = (off % 24) / 3;
+        int dir  = off % 3;
+        from = (us == 0 ? 6 : 1) * 8 + file;
+        to   = (us == 0 ? 7 : 0) * 8 + file + dir - 1;
+    } else {
+        from = (move / 64) ^ flip;
+        to   = (move % 64) ^ flip;
+    }
+
+    int piece = piece_on(b, from);
+    int pt    = piece % 6;
+
+    /* ---- Infer move type ---- */
+    uint8_t type;
+    if (promo >= 0)
+        type = MT_PROMO_N + promo;
+    else if (pt == 5 && abs((to%8)-(from%8)) == 2)
+        type = (to%8) > (from%8) ? MT_CASTLE_K : MT_CASTLE_Q;
+    else if (pt == 0 && (to%8) != (from%8) && piece_on(b, to) == EMPTY)
+        type = MT_EP;
+    else if (pt == 0 && abs((to/8)-(from/8)) == 2)
+        type = MT_DOUBLE;
+    else if (pt == 0 && (to/8 == 0 || to/8 == 7))
+        type = MT_PROMO_Q;
+    else
+        type = MT_NORMAL;
 
     /* ---- Save undo state ---- */
     Undo *u     = &b->history[b->ply];
     u->move     = move;
+    u->type     = type;
     u->castling = b->castling;
     u->ep_file  = b->ep_file;
     u->halfmove = b->halfmove;
@@ -723,13 +741,11 @@ void make_move(Board *b, uint16_t move) {
     if (b->ep_file >= 0)
         h ^= zt.en_passant[b->ep_file];
 
-    int piece = piece_on(b, from);
-
     /* ---- Handle each move type ---- */
 
-    if (flags == MF_CASTLE_K || flags == MF_CASTLE_Q) {
+    if (type == MT_CASTLE_K || type == MT_CASTLE_Q) {
         int rook_from, rook_to;
-        if (flags == MF_CASTLE_K) {
+        if (type == MT_CASTLE_K) {
             rook_from = us == 0 ? 7  : 63;
             rook_to   = us == 0 ? 5  : 61;
         } else {
@@ -748,7 +764,7 @@ void make_move(Board *b, uint16_t move) {
 
         u->captured = EMPTY;
 
-    } else if (flags == MF_EP) {
+    } else if (type == MT_EP) {
         int cap_sq  = us == 0 ? to - 8 : to + 8;
         int cap_pce = us == 0 ? BP : WP;
 
@@ -761,24 +777,27 @@ void make_move(Board *b, uint16_t move) {
 
         u->captured = cap_pce;
 
-    } else if (flags >= MF_PROMO_N && flags <= MF_PROMO_Q) {
-        /* Promotion piece: flags>>12 gives 1=N 2=B 3=R 4=Q */
-        int promo = (flags >> 12) + (us == 0 ? 0 : 6);
+    } else if (type >= MT_PROMO_Q && type <= MT_PROMO_R) {
+        int promo_piece;
+        switch (type) {
+            case MT_PROMO_Q: promo_piece = us * 6 + 4; break;
+            case MT_PROMO_N: promo_piece = us * 6 + 1; break;
+            case MT_PROMO_B: promo_piece = us * 6 + 2; break;
+            default:         promo_piece = us * 6 + 3; break;
+        }
         int captured = piece_on(b, to);
         u->captured  = captured;
 
-        /* Remove captured piece */
         if (captured != EMPTY) {
             toggle_piece(b, captured, to);
             h ^= zt.piece_sq[captured][to];
         }
 
-        /* Remove pawn, place promoted piece */
         toggle_piece(b, piece, from);
-        toggle_piece(b, promo, to);
+        toggle_piece(b, promo_piece, to);
 
         h ^= zt.piece_sq[piece][from];
-        h ^= zt.piece_sq[promo][to];
+        h ^= zt.piece_sq[promo_piece][to];
 
     } else {
         /* Normal move or double push */
@@ -800,7 +819,7 @@ void make_move(Board *b, uint16_t move) {
     b->castling &= castle_mask[from] & castle_mask[to];
 
     /* ---- Update en-passant file ---- */
-    if (flags == MF_DOUBLE)
+    if (type == MT_DOUBLE)
         b->ep_file = FILE(from);
     else
         b->ep_file = -1;
@@ -833,11 +852,6 @@ void undo_move(Board *b) {
     b->ply--;
     const Undo *u = &b->history[b->ply];
 
-    const uint16_t move  = u->move;
-    const int from  = MOVE_FROM(move);
-    const int to    = MOVE_TO(move);
-    const int flags = MOVE_FLAGS(move);
-
     /* Flip side back first so "us" is the side that made the move */
     b->turn ^= 1;
     const int us = b->turn;
@@ -850,11 +864,29 @@ void undo_move(Board *b) {
     b->halfmove = u->halfmove;
     if (us == 1) b->fullmove--;
 
+    /* Decode from/to from policy index */
+    uint16_t move = u->move;
+    int flip = us ? 56 : 0;
+    int from, to;
+
+    if (move >= 4096) {
+        int off  = move - 4096;
+        int file = (off % 24) / 3;
+        int dir  = off % 3;
+        from = (us == 0 ? 6 : 1) * 8 + file;
+        to   = (us == 0 ? 7 : 0) * 8 + file + dir - 1;
+    } else {
+        from = (move / 64) ^ flip;
+        to   = (move % 64) ^ flip;
+    }
+
+    uint8_t type = u->type;
+
     /* ---- Reverse the move ---- */
 
-    if (flags == MF_CASTLE_K || flags == MF_CASTLE_Q) {
+    if (type == MT_CASTLE_K || type == MT_CASTLE_Q) {
         int rook_from, rook_to;
-        if (flags == MF_CASTLE_K) {
+        if (type == MT_CASTLE_K) {
             rook_from = us == 0 ? 7  : 63;
             rook_to   = us == 0 ? 5  : 61;
         } else {
@@ -869,7 +901,7 @@ void undo_move(Board *b) {
         toggle_piece(b, rook, rook_to);
         toggle_piece(b, rook, rook_from);
 
-    } else if (flags == MF_EP) {
+    } else if (type == MT_EP) {
         int pawn   = us == 0 ? WP : BP;
         int cap_sq = us == 0 ? to - 8 : to + 8;
 
@@ -877,15 +909,19 @@ void undo_move(Board *b) {
         toggle_piece(b, pawn, from);
         toggle_piece(b, u->captured, cap_sq);
 
-    } else if (flags >= MF_PROMO_N && flags <= MF_PROMO_Q) {
-        int pawn  = us == 0 ? WP : BP;
-        int promo = (flags >> 12) + (us == 0 ? 0 : 6);
+    } else if (type >= MT_PROMO_Q && type <= MT_PROMO_R) {
+        int pawn = us == 0 ? WP : BP;
+        int promo_piece;
+        switch (type) {
+            case MT_PROMO_Q: promo_piece = us * 6 + 4; break;
+            case MT_PROMO_N: promo_piece = us * 6 + 1; break;
+            case MT_PROMO_B: promo_piece = us * 6 + 2; break;
+            default:         promo_piece = us * 6 + 3; break;
+        }
 
-        /* Remove promoted piece, restore pawn */
-        toggle_piece(b, promo, to);
+        toggle_piece(b, promo_piece, to);
         toggle_piece(b, pawn, from);
 
-        /* Restore captured piece */
         if (u->captured != EMPTY)
             toggle_piece(b, u->captured, to);
 
@@ -958,79 +994,4 @@ int game_result(const Board *b, int num_legal_moves) {
     return 0;
 
   return 2;
-}
-
-void print_board(const Board *b) {
-  const char chars[] = "PNBRQKpnbrqk";
-  for (int rank = 7; rank >= 0; rank--) {
-    printf("%d  ", rank + 1);
-    for (int file = 0; file < 8; file++) {
-      int piece = b->squares[rank * 8 + file];
-      putchar(piece == EMPTY ? '.' : chars[piece]);
-      if (file < 7) putchar(' ');
-    }
-    putchar('\n');
-  }
-  printf("   a b c d e f g h\n");
-}
-
-void move_to_str(uint16_t move, char *buf) {
-  int from = MOVE_FROM(move);
-  int to   = MOVE_TO(move);
-  int flags = MOVE_FLAGS(move);
-
-  buf[0] = 'a' + FILE(from);
-  buf[1] = '1' + RANK(from);
-  buf[2] = 'a' + FILE(to);
-  buf[3] = '1' + RANK(to);
-
-  if (flags >= MF_PROMO_N && flags <= MF_PROMO_Q) {
-    const char promo[] = "nbrq";
-    buf[4] = promo[(flags >> 12) - 1];
-    buf[5] = '\0';
-  } else {
-    buf[4] = '\0';
-  }
-}
-
-int str_to_move(Board *b, const char *str, uint16_t *out) {
-  if (!str[0] || !str[1] || !str[2] || !str[3])
-    return 0;
-
-  int ff = str[0] - 'a', fr = str[1] - '1';
-  int tf = str[2] - 'a', tr = str[3] - '1';
-
-  if (ff < 0 || ff > 7 || fr < 0 || fr > 7 ||
-      tf < 0 || tf > 7 || tr < 0 || tr > 7)
-    return 0;
-
-  int from_sq = fr * 8 + ff;
-  int to_sq   = tr * 8 + tf;
-
-  int promo_flag = 0;
-  if (str[4]) {
-    switch (str[4]) {
-      case 'n': promo_flag = MF_PROMO_N; break;
-      case 'b': promo_flag = MF_PROMO_B; break;
-      case 'r': promo_flag = MF_PROMO_R; break;
-      case 'q': promo_flag = MF_PROMO_Q; break;
-      default: return 0;
-    }
-  }
-
-  uint16_t moves[NUM_MOVES];
-  int n = legal_moves(b, moves);
-
-  for (int i = 0; i < n; i++) {
-    if (MOVE_FROM(moves[i]) != from_sq || MOVE_TO(moves[i]) != to_sq)
-      continue;
-    int flags = MOVE_FLAGS(moves[i]);
-    if (promo_flag) {
-      if (flags == promo_flag) { *out = moves[i]; return 1; }
-    } else {
-      if (flags < MF_PROMO_N || flags > MF_PROMO_Q) { *out = moves[i]; return 1; }
-    }
-  }
-
-  return 0;
 }
