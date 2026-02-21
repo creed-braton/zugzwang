@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -Isrc -Ilib/onnx/include
 LDFLAGS = -Llib/onnx/lib -Wl,-rpath,'$$ORIGIN/../lib/onnx/lib'
-LDLIBS = -lonnxruntime
+LDLIBS = -lonnxruntime -lpthread -lm
 
 SRC_DIR = src
 BUILD_DIR = build
