@@ -23,7 +23,12 @@ class Dataset(torch.utils.data.Dataset):
 
 
 async def _generate_game(
-    batcher, num_simulations, temperature=1.0, greedy_threshold=30
+    batcher,
+    num_simulations,
+    temperature=1.0,
+    greedy_threshold=30,
+    dirichlet_epsilon=0.25,
+    dirichlet_alpha=0.03,
 ):
     board = chess.Board()
     states = []
@@ -33,8 +38,10 @@ async def _generate_game(
     while not board.is_game_over(claim_draw=True):
         root = Node()
 
-        for _ in range(num_simulations):
-            await root.simulate(board, batcher.infer, temperature=temperature)
+        await root.simulate(board, batcher.infer)
+        root.add_dirichlet_noise(dirichlet_epsilon, dirichlet_alpha)
+        for _ in range(num_simulations - 1):
+            await root.simulate(board, batcher.infer)
 
         states.append(board_to_tensor(board, batcher.history_steps))
 
@@ -53,6 +60,7 @@ async def _generate_game(
                 [root.children[m].visit_count for m in moves],
                 dtype=torch.float32,
             )
+            visit_counts = visit_counts ** (1.0 / temperature)
             visit_counts /= visit_counts.sum()
             move_idx = torch.multinomial(visit_counts, 1).item()
         else:
@@ -91,6 +99,8 @@ async def _self_play_async(
     temperature,
     greedy_threshold,
     history_steps=8,
+    dirichlet_epsilon=0.25,
+    dirichlet_alpha=0.03,
 ):
     batcher = InferenceBatcher(model, device, batch_size=batch_size, history_steps=history_steps)
     batcher_task = asyncio.create_task(batcher.run())
@@ -101,7 +111,12 @@ async def _self_play_async(
     async def _play_and_track():
         nonlocal total_moves
         states, policies, values = await _generate_game(
-            batcher, num_simulations, temperature, greedy_threshold
+            batcher,
+            num_simulations,
+            temperature,
+            greedy_threshold,
+            dirichlet_epsilon,
+            dirichlet_alpha,
         )
         total_moves += len(states)
 
@@ -139,11 +154,7 @@ async def _self_play_async(
         all_policies.extend(policies)
         all_values.append(values)
 
-    return Dataset(
-        torch.stack(all_states),
-        torch.stack(all_policies),
-        torch.cat(all_values),
-    )
+    return torch.stack(all_states), torch.stack(all_policies), torch.cat(all_values)
 
 
 def self_play(
@@ -155,7 +166,9 @@ def self_play(
     temperature=1.0,
     greedy_threshold=30,
     history_steps=8,
-) -> Dataset:
+    dirichlet_epsilon=0.25,
+    dirichlet_alpha=0.03,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     return asyncio.run(
         _self_play_async(
             model,
@@ -166,5 +179,7 @@ def self_play(
             temperature,
             greedy_threshold,
             history_steps,
+            dirichlet_epsilon,
+            dirichlet_alpha,
         )
     )

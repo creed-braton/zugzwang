@@ -6,7 +6,7 @@ from logging import Logger
 import torch
 import torch.nn.functional as F
 
-from .dataset import self_play
+from .dataset import Dataset, self_play
 from .net import Net
 
 
@@ -67,6 +67,8 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
         return
 
     save_path = os.path.join("models", f"{id}.pth")
+    data_dir = os.path.join("data", str(id))
+    os.makedirs(data_dir, exist_ok=True)
 
     for iteration in range(start_iteration + 1, args.num_iterations + 1):
         logger.info(
@@ -74,7 +76,7 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
             iteration, args.num_iterations, args.num_games,
         )
 
-        dataset = self_play(
+        states, policies, values = self_play(
             model,
             device,
             num_games=args.num_games,
@@ -83,6 +85,34 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
             temperature=args.temperature,
             greedy_threshold=args.greedy_threshold,
             history_steps=args.history_steps,
+            dirichlet_epsilon=args.dirichlet_epsilon,
+            dirichlet_alpha=args.dirichlet_alpha,
+        )
+
+        data_path = os.path.join(data_dir, f"iteration_{iteration:04d}.pt")
+        torch.save({"states": states, "policies": policies, "values": values}, data_path)
+
+        # Load replay window
+        all_states, all_policies, all_values = [], [], []
+        window_start = max(1, iteration - args.window_size + 1)
+        for i in range(window_start, iteration + 1):
+            path = os.path.join(data_dir, f"iteration_{i:04d}.pt")
+            if os.path.exists(path):
+                data = torch.load(path, weights_only=True)
+                all_states.append(data["states"])
+                all_policies.append(data["policies"])
+                all_values.append(data["values"])
+            else:
+                logger.warning("Missing replay data: %s", path)
+
+        dataset = Dataset(
+            torch.cat(all_states),
+            torch.cat(all_policies),
+            torch.cat(all_values),
+        )
+        logger.info(
+            "Replay buffer: %d iterations, %d positions",
+            len(all_states), len(dataset),
         )
 
         loader = torch.utils.data.DataLoader(

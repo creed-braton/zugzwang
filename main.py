@@ -11,7 +11,7 @@ def main():
 
     # Model architecture
     parser.add_argument(
-        "--res-blocks", type=int, default=6, help="number of residual blocks"
+        "--res-blocks", type=int, default=8, help="number of residual blocks"
     )
     parser.add_argument(
         "--channels",
@@ -37,7 +37,7 @@ def main():
 
     # Self-play
     parser.add_argument(
-        "--num-games", type=int, default=1024, help="games per iteration"
+        "--num-games", type=int, default=2048, help="games per iteration"
     )
     parser.add_argument(
         "--num-simulations",
@@ -53,6 +53,18 @@ def main():
         type=int,
         default=30,
         help="move number after which greedy selection is used",
+    )
+    parser.add_argument(
+        "--dirichlet-alpha",
+        type=float,
+        default=0.03,
+        help="Dirichlet noise alpha",
+    )
+    parser.add_argument(
+        "--dirichlet-epsilon",
+        type=float,
+        default=0.25,
+        help="Dirichlet noise mixing fraction",
     )
 
     # Training
@@ -73,6 +85,12 @@ def main():
     )
     parser.add_argument(
         "--log-interval", type=int, default=10, help="log every N batches"
+    )
+    parser.add_argument(
+        "--window-size",
+        type=int,
+        default=5,
+        help="number of recent iterations to keep in replay buffer",
     )
     parser.add_argument(
         "--cuda",

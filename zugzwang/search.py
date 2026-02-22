@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import math
 from typing import Callable
 
 import chess
+import torch
 
 from .encode import legal_moves
 
@@ -40,21 +43,26 @@ class Node:
 
         return best_move, best_node
 
-    def _expand(self, board: chess.Board, policy, temperature=1.0):
+    def _expand(self, board: chess.Board, policy):
         moves, indices = legal_moves(board)
         priors = policy[indices]
-        if temperature != 1.0:
-            priors = priors ** (1.0 / temperature)
         priors /= priors.sum()
         for move, prior in zip(moves, priors):
             self.children[move] = Node(prior=prior.item(), parent=self)
+
+    def add_dirichlet_noise(self, epsilon, alpha):
+        children = list(self.children.values())
+        noise = torch.distributions.Dirichlet(
+            torch.full((len(children),), alpha)
+        ).sample()
+        for child, n in zip(children, noise):
+            child.prior = (1 - epsilon) * child.prior + epsilon * n.item()
 
     async def simulate(
         self,
         board: chess.Board,
         inference: Callable,
         c=1.41,
-        temperature=1.0,
     ):
         node = self
         depth = 0
@@ -68,7 +76,7 @@ class Node:
             value = -1.0 if board.is_checkmate() else 0.0
         else:
             policy, value = await inference(board)
-            node._expand(board, policy, temperature)
+            node._expand(board, policy)
 
         while node is not None:
             node.visit_count += 1

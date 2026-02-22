@@ -88,10 +88,7 @@ batcher = InferenceBatcher(
 
 # MCTS parameters from model metadata
 num_simulations = params["num_simulations"]
-temperature = params["temperature"]
-logger.info(
-    "MCTS: num_simulations=%d, temperature=%.2f", num_simulations, temperature
-)
+logger.info("MCTS: num_simulations=%d", num_simulations)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +123,7 @@ async def get_move(req: MoveRequest):
     root = Node()
 
     for _ in range(num_simulations):
-        await root.simulate(board, batcher.infer, temperature=temperature)
+        await root.simulate(board, batcher.infer)
 
     best_move = max(root.children, key=lambda m: root.children[m].visit_count)
     board.push(best_move)
