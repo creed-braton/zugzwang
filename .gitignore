@@ -36,3 +36,6 @@
 **/*.njsproj
 **/*.sln
 **/*.sw?
+
+# Claude directories and files
+**/.claude
