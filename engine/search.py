@@ -17,14 +17,19 @@ class Node:
         self.visit_count = 0
         self.children: dict[chess.Move, Node] = {}
 
-    def _select(self, c):
+    def _select(self, c, fpu_reduction):
+        parent_q = (
+            self.value_sum / self.visit_count if self.visit_count > 0 else 0.0
+        )
+        fpu_q = parent_q - fpu_reduction
+
         best_score = -float("inf")
         best_move = None
         best_node = None
 
         for move, child in self.children.items():
             if child.visit_count == 0:
-                quality = 0.0
+                quality = fpu_q
             else:
                 quality = -child.value_sum / child.visit_count
 
@@ -62,17 +67,18 @@ class Node:
         self,
         board: chess.Board,
         inference: Callable,
-        c=1.41,
+        c=1.25,
+        fpu_reduction=0.2,
     ):
         node = self
         depth = 0
 
         while node.children:
-            move, node = node._select(c)
+            move, node = node._select(c, fpu_reduction)
             board.push(move)
             depth += 1
 
-        if board.is_game_over():
+        if board.is_game_over(claim_draw=True):
             value = -1.0 if board.is_checkmate() else 0.0
         else:
             policy, value = await inference(board)

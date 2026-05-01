@@ -48,11 +48,13 @@ def board_to_tensor(board: chess.Board, history_steps=8) -> torch.Tensor:
 
     tensor[offset + 4] = board.halfmove_clock
     tensor[offset + 5] = board.fullmove_number
+    tensor[offset + 6] = 1.0 if board.turn == chess.WHITE else 0.0
 
     return tensor
 
 
-_UNDERPROM_PCS_DIM = 3  # promoting to knight, bishop, rook needs to be encoded in separate state
+# promoting to knight, bishop, rook needs to be encoded in separate state
+_UNDERPROM_PCS_DIM = 3
 _FILE_DIM = 8  # amount of column positions underpromotions can happen from
 _PAWN_DIR_DIM = 3  # pawn has 3 directions, left take, right take, forward
 _UNDERPROM_DIM = _UNDERPROM_PCS_DIM * _FILE_DIM * _PAWN_DIR_DIM

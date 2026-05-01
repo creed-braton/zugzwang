@@ -19,9 +19,13 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
         if k not in ("resume", "cuda", "log_interval")
     }
 
-    device = torch.device("cuda" if args.cuda and torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
+    )
     input_dim = 14 * args.history_steps + 7
-    model = Net(input_dim, res_blocks=args.res_blocks, channels=args.channels).to(device)
+    model = Net(
+        input_dim, res_blocks=args.res_blocks, channels=args.channels
+    ).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
@@ -49,14 +53,15 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
             logger.warning("Hyper-parameter mismatch with checkpoint:")
             for k, (old, new) in diff.items():
                 logger.warning("  %s: %s -> %s", k, old, new)
-            if input("Continue with new hyper-parameters? [y/N] ").lower() != "y":
+            if (
+                input("Continue with new hyper-parameters? [y/N] ").lower()
+                != "y"
+            ):
                 logger.info("Aborting training")
                 return
             logger.info("Hyper-parameters updated to new values")
 
-        logger.info(
-            "Resuming run %s from iteration %d", id, start_iteration
-        )
+        logger.info("Resuming run %s from iteration %d", id, start_iteration)
 
     if start_iteration >= args.num_iterations:
         logger.info(
@@ -73,7 +78,9 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
     for iteration in range(start_iteration + 1, args.num_iterations + 1):
         logger.info(
             "Iteration %d/%d: generating %d games",
-            iteration, args.num_iterations, args.num_games,
+            iteration,
+            args.num_iterations,
+            args.num_games,
         )
 
         states, policies, values = self_play(
@@ -90,7 +97,10 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
         )
 
         data_path = os.path.join(data_dir, f"iteration_{iteration:04d}.pt")
-        torch.save({"states": states, "policies": policies, "values": values}, data_path)
+        torch.save(
+            {"states": states, "policies": policies, "values": values},
+            data_path,
+        )
 
         # Load replay window
         all_states, all_policies, all_values = [], [], []
@@ -112,7 +122,8 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
         )
         logger.info(
             "Replay buffer: %d iterations, %d positions",
-            len(all_states), len(dataset),
+            len(all_states),
+            len(dataset),
         )
 
         loader = torch.utils.data.DataLoader(
@@ -121,7 +132,9 @@ def train_self_play(args, logger: Logger, id: uuid.UUID | None = None):
 
         model.train()
         for epoch in range(1, args.num_epochs + 1):
-            for batch_idx, (data, policy_target, value_target) in enumerate(loader):
+            for batch_idx, (data, policy_target, value_target) in enumerate(
+                loader
+            ):
                 data = data.to(device)
                 policy_target = policy_target.to(device)
                 value_target = value_target.to(device)

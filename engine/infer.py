@@ -24,7 +24,7 @@ class InferenceBatcher:
 
     async def infer(self, board):
         tensor = board_to_tensor(board, self.history_steps)
-        future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
         await self._queue.put((tensor, future))
         return await future
 
@@ -36,7 +36,7 @@ class InferenceBatcher:
         return policy, value
 
     async def run(self):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self.start_time = loop.time()
         while True:
             # Block until at least one request arrives

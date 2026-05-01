@@ -28,7 +28,7 @@ async def _generate_game(
     temperature=1.0,
     greedy_threshold=30,
     dirichlet_epsilon=0.25,
-    dirichlet_alpha=0.03,
+    dirichlet_alpha=0.3,
 ):
     board = chess.Board()
     states = []
@@ -100,7 +100,7 @@ async def _self_play_async(
     greedy_threshold,
     history_steps=8,
     dirichlet_epsilon=0.25,
-    dirichlet_alpha=0.03,
+    dirichlet_alpha=0.3,
 ):
     batcher = InferenceBatcher(model, device, batch_size=batch_size, history_steps=history_steps)
     batcher_task = asyncio.create_task(batcher.run())
@@ -122,7 +122,7 @@ async def _self_play_async(
 
         postfix = {"moves": total_moves}
         if batcher.start_time is not None:
-            elapsed = asyncio.get_event_loop().time() - batcher.start_time
+            elapsed = asyncio.get_running_loop().time() - batcher.start_time
             if elapsed > 0:
                 postfix["inf/s"] = int(batcher.total_inferences / elapsed)
             if batcher.total_batches > 0:
@@ -167,7 +167,7 @@ def self_play(
     greedy_threshold=30,
     history_steps=8,
     dirichlet_epsilon=0.25,
-    dirichlet_alpha=0.03,
+    dirichlet_alpha=0.3,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     return asyncio.run(
         _self_play_async(
