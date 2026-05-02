@@ -1,73 +1,81 @@
-import asyncio
-from functools import partial
+"""Multi-process inference API."""
 
+from __future__ import annotations
+
+import chess
 import torch
+import torch.nn as nn
 
-from .encode import board_to_tensor
+
+class InferenceError(Exception):
+    """Base class for inference errors."""
 
 
-class InferenceBatcher:
+class InferenceServerError(InferenceError):
+    """Forward-pass exception on the server, surfaced to callers."""
+
+
+class InferenceShutdown(InferenceError):
+    """Raised on pending callers when the API is shut down."""
+
+
+class InferenceClient:
+    """Per-worker handle, picklable into a spawned worker process."""
+
+    async def connect(self) -> None:
+        """Register with the server. Call once before any infer()."""
+        raise NotImplementedError
+
+    async def disconnect(self) -> None:
+        """Unregister from the server, cancelling any in-flight requests."""
+        raise NotImplementedError
+
+    async def infer(self, board: chess.Board) -> tuple[torch.Tensor, float]:
+        """Run inference for one board; returns (policy on CPU, value in [-1, 1])."""
+        raise NotImplementedError
+
+
+class InferenceServer:
+    """Multi-process inference server; constructed once in the parent."""
+
     def __init__(
-        self, model, device, batch_size=64, timeout=0.005, history_steps=8
+        self,
+        model: nn.Module,
+        device: str | torch.device,
+        batch_size: int = 64,
+        timeout: float = 0.005,
+        history_steps: int = 8,
+        cpu_affinity: int | list[int] | None = None,
     ):
-        self._model = model
-        self._model.eval()
-        self._model.to(device)
-        self._device = device
-        self._batch_size = batch_size
-        self._timeout = timeout
-        self.history_steps = history_steps
-        self._queue = asyncio.Queue()
-        self.total_inferences = 0
-        self.total_batches = 0
-        self.start_time = None
+        raise NotImplementedError
 
-    async def infer(self, board):
-        tensor = board_to_tensor(board, self.history_steps)
-        future = asyncio.get_running_loop().create_future()
-        await self._queue.put((tensor, future))
-        return await future
+    def start(self) -> None:
+        """Spawn the server process and open IPC channels."""
+        raise NotImplementedError
 
-    def _forward(self, batch):
-        with torch.no_grad():
-            policy, value = self._model(batch)
-        policy = torch.softmax(policy, dim=1).cpu()
-        value = value.squeeze(-1).cpu()
-        return policy, value
+    def client(self) -> InferenceClient:
+        """Mint a picklable handle for one worker."""
+        raise NotImplementedError
 
-    async def run(self):
-        loop = asyncio.get_running_loop()
-        self.start_time = loop.time()
-        while True:
-            # Block until at least one request arrives
-            tensor, future = await self._queue.get()
-            batch_tensors = [tensor]
-            batch_futures = [future]
+    def shutdown(self, timeout: float = 5.0) -> None:
+        """Drain, terminate the server, unblock pending callers."""
+        raise NotImplementedError
 
-            # Collect more until batch_size or timeout
-            deadline = loop.time() + self._timeout
-            while len(batch_tensors) < self._batch_size:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    break
-                try:
-                    tensor, future = await asyncio.wait_for(
-                        self._queue.get(), timeout=remaining
-                    )
-                    batch_tensors.append(tensor)
-                    batch_futures.append(future)
-                except asyncio.TimeoutError:
-                    break
+    @property
+    def total_inferences(self) -> int:
+        raise NotImplementedError
 
-            # GPU forward pass in executor so game coroutines aren't blocked
-            batch = torch.stack(batch_tensors).to(self._device)
-            policy, value = await loop.run_in_executor(
-                None, partial(self._forward, batch)
-            )
+    @property
+    def total_batches(self) -> int:
+        raise NotImplementedError
 
-            self.total_batches += 1
-            self.total_inferences += len(batch_tensors)
+    @property
+    def start_time(self) -> float | None:
+        raise NotImplementedError
 
-            # Resolve futures so each coroutine gets its result
-            for i, fut in enumerate(batch_futures):
-                fut.set_result((policy[i], value[i].item()))
+    def __enter__(self) -> InferenceServer:
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.shutdown()
