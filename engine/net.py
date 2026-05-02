@@ -1,3 +1,5 @@
+import hashlib
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -56,3 +58,14 @@ class Net(nn.Module):
         value = torch.tanh(self.value_fc2(v))
 
         return policy, value
+
+
+def hash_model(model: nn.Module) -> str:
+    """Stable id for the model's weights — same checkpoint, same id across runs."""
+    h = hashlib.blake2b(digest_size=8)
+    state = model.state_dict()
+    for key in sorted(state):
+        tensor = state[key].detach().cpu().contiguous()
+        h.update(key.encode())
+        h.update(tensor.numpy().tobytes())
+    return h.hexdigest()
