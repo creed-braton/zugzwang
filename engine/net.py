@@ -67,5 +67,5 @@ def hash_model(model: nn.Module) -> str:
     for key in sorted(state):
         tensor = state[key].detach().cpu().contiguous()
         h.update(key.encode())
-        h.update(tensor.numpy().tobytes())
+        h.update(bytes(tensor.untyped_storage()))
     return h.hexdigest()

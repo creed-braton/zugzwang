@@ -34,17 +34,6 @@ class InferenceShutdown(InferenceError):
 # --- IPC message types -------------------------------------------------------
 
 
-@dataclass
-class _Register:
-    client_id: int
-    response_q: Any
-
-
-@dataclass
-class _Deregister:
-    client_id: int
-
-
 class _Shutdown:
     """Sentinel — terminates the server (on request_q) or a client reader
     thread (on response_q)."""
@@ -134,6 +123,7 @@ def _server_main(
     model: nn.Module,
     device: str | torch.device,
     request_q: Any,
+    response_qs: list[Any],
     counters: dict[str, Any],
     cpu_affinity: int | list[int] | None,
     batch_size: int,
@@ -145,7 +135,7 @@ def _server_main(
     model = model.to(device).eval()
     counters["start_time"].value = time.time()
 
-    registry: dict[int, Any] = {}
+    registry: dict[int, Any] = dict(enumerate(response_qs))
     shutdown_received = False
 
     while not shutdown_received:
@@ -155,10 +145,6 @@ def _server_main(
         for item in items:
             if isinstance(item, _Shutdown):
                 shutdown_received = True
-            elif isinstance(item, _Register):
-                registry[item.client_id] = item.response_q
-            elif isinstance(item, _Deregister):
-                registry.pop(item.client_id, None)
             else:
                 data_items.append(item)
 
@@ -216,7 +202,7 @@ class InferenceClient:
         self._connected = False
 
     async def connect(self) -> None:
-        """Register with the server. Call once before any infer()."""
+        """Start the reader thread. Call once before any infer()."""
         if self._connected:
             raise InferenceError("client already connected")
         self._loop = asyncio.get_running_loop()
@@ -224,15 +210,13 @@ class InferenceClient:
         self._lock = threading.Lock()
         self._reader = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader.start()
-        self._request_q.put(_Register(self._client_id, self._response_q))
         self._connected = True
 
     async def disconnect(self) -> None:
-        """Unregister from the server, cancelling any in-flight requests."""
+        """Stop the reader thread. Server-initiated shutdown also unblocks it."""
         if not self._connected:
             return
         self._connected = False
-        self._request_q.put(_Deregister(self._client_id))
         self._response_q.put(_Shutdown())
         await asyncio.to_thread(self._reader.join)
 
@@ -294,12 +278,15 @@ class InferenceServer:
         self,
         model: nn.Module,
         device: str | torch.device,
+        num_clients: int,
         batch_size: int = 64,
         timeout: float = 0.005,
         history_steps: int = 8,
         cpu_affinity: int | list[int] | None = None,
         model_id: str | None = None,
     ):
+        if num_clients < 1:
+            raise InferenceError("num_clients must be >= 1")
         self._model = model
         self._device = device
         self._batch_size = batch_size
@@ -310,13 +297,25 @@ class InferenceServer:
 
         self._ctx = mp.get_context("spawn")
         self._request_q = self._ctx.Queue()
+        self._response_qs: list[Any] = [
+            self._ctx.Queue() for _ in range(num_clients)
+        ]
         self._counters = {
             "total_inferences": self._ctx.Value("q", 0),
             "total_batches": self._ctx.Value("q", 0),
             "start_time": self._ctx.Value("d", 0.0),
         }
         self._process: mp.Process | None = None
-        self._next_client_id = 0
+        self.clients: list[InferenceClient] = [
+            InferenceClient(
+                request_q=self._request_q,
+                response_q=self._response_qs[i],
+                client_id=i,
+                history_steps=self._history_steps,
+                model_id=self.model_id,
+            )
+            for i in range(num_clients)
+        ]
 
     def start(self) -> None:
         """Spawn the server process and open IPC channels."""
@@ -328,6 +327,7 @@ class InferenceServer:
                 self._model,
                 self._device,
                 self._request_q,
+                self._response_qs,
                 self._counters,
                 self._cpu_affinity,
                 self._batch_size,
@@ -336,19 +336,6 @@ class InferenceServer:
             daemon=True,
         )
         self._process.start()
-
-    def client(self) -> InferenceClient:
-        """Mint a picklable handle for one worker."""
-        client_id = self._next_client_id
-        self._next_client_id += 1
-        response_q = self._ctx.Queue()
-        return InferenceClient(
-            request_q=self._request_q,
-            response_q=response_q,
-            client_id=client_id,
-            history_steps=self._history_steps,
-            model_id=self.model_id,
-        )
 
     def shutdown(self, timeout: float = 5.0) -> None:
         """Drain, terminate the server, unblock pending callers."""

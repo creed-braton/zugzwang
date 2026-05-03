@@ -1,15 +1,11 @@
 import argparse
-import logging
-import sys
-import uuid
+from pathlib import Path
 
-from zugzwang.train import train_self_play
+from engine.model import Config, Model
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Zugzwang chess training")
-
-    # Model architecture
+def _add_config_args(parser: argparse.ArgumentParser) -> None:
+    # Architecture
     parser.add_argument(
         "--res-blocks", type=int, default=8, help="number of residual blocks"
     )
@@ -37,9 +33,6 @@ def main():
 
     # Self-play
     parser.add_argument(
-        "--num-games", type=int, default=2048, help="games per iteration"
-    )
-    parser.add_argument(
         "--num-simulations",
         type=int,
         default=100,
@@ -57,7 +50,7 @@ def main():
     parser.add_argument(
         "--dirichlet-alpha",
         type=float,
-        default=0.03,
+        default=0.3,
         help="Dirichlet noise alpha",
     )
     parser.add_argument(
@@ -81,10 +74,7 @@ def main():
         help="training epochs per iteration",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=1024, help="batch size"
-    )
-    parser.add_argument(
-        "--log-interval", type=int, default=10, help="log every N batches"
+        "--batch-size", type=int, default=1024, help="training batch size"
     )
     parser.add_argument(
         "--window-size",
@@ -92,35 +82,47 @@ def main():
         default=5,
         help="number of recent iterations to keep in replay buffer",
     )
+
+    # MCTS
     parser.add_argument(
-        "--cuda",
-        action="store_true",
-        default=True,
-        help="use CUDA if available",
+        "--c", type=float, default=1.25, help="UCB exploration constant"
     )
     parser.add_argument(
-        "--no-cuda", action="store_false", dest="cuda", help="disable CUDA"
+        "--fpu-reduction",
+        type=float,
+        default=0.2,
+        help="first-play urgency reduction",
     )
 
-    # Resume
+    # Inference
     parser.add_argument(
-        "--resume",
-        type=str,
-        default=None,
-        help="UUID of a previous run to resume",
+        "--inference-batch-size",
+        type=int,
+        default=64,
+        help="inference server batch size",
+    )
+    parser.add_argument(
+        "--inference-timeout",
+        type=float,
+        default=0.005,
+        help="inference server batch wait timeout (seconds)",
     )
 
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="zugzwang-init",
+        description="Create a fresh model checkpoint from CLI args.",
+    )
+    _add_config_args(parser)
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
-    )
-    logger = logging.getLogger("zugzwang")
-
-    run_id = uuid.UUID(args.resume) if args.resume else None
-    train_self_play(args, logger, id=run_id)
+    config = Config.from_args(args)
+    model = Model.init(config)
+    path = Path("models") / model.run_id / f"{model.model_id}.pth"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    model.save(path)
+    print(path)
 
 
 if __name__ == "__main__":
